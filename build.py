@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import hashlib
 from pathlib import Path
 import subprocess
@@ -36,17 +37,31 @@ def run(*args):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Build the Circle to Search overlay APK.")
+    parser.add_argument("--ks", type=Path, help="Path to the signing keystore.")
+    parser.add_argument("--ks-key-alias", help="Alias of the key to use for signing.")
+    args = parser.parse_args()
+    if args.ks_key_alias and not args.ks:
+        parser.error("--ks-key-alias requires --ks")
+    if args.ks and not args.ks.is_file():
+        parser.error(f"Keystore not found: {args.ks}")
+
     apktool = tool("build/apktool/apktool_3.0.2.jar")
     signer = tool("build/sign/apksigner.jar")
-    key = tool("build/sign/testkey.pk8")
-    cert = tool("build/sign/testkey.x509.pem")
+    if args.ks:
+        options = ["--ks", args.ks]
+        if args.ks_key_alias:
+            options += ["--ks-key-alias", args.ks_key_alias]
+    else:
+        options = ["--key", tool("build/sign/testkey.pk8"),
+                   "--cert", tool("build/sign/testkey.x509.pem")]
     unsigned = CACHE / "CtsOverlay-unsigned.apk"
     aligned = CACHE / "CtsOverlay-aligned.apk"
     signed = CACHE / "CtsOverlay.apk"
 
     run("java", "-jar", apktool, "b", ROOT / "overlay", "-o", unsigned)
     run("zipalign", "-p", "-f", "4", unsigned, aligned)
-    run("java", "-jar", signer, "sign", "--key", key, "--cert", cert,
+    run("java", "-jar", signer, "sign", *options,
         "--v4-signing-enabled", "false", "--out", signed, aligned)
     run("java", "-jar", signer, "verify", signed)
 
